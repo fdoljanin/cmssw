@@ -117,7 +117,8 @@ public:
     }
 
     auto etaOk = [&](const CaloParticle& p) -> bool {
-      return true;
+      float eta = etaFromXYZ(p.px(), p.py(), p.pz());
+      return (eta >= minRapidity_) & (eta <= maxRapidity_);
     };
     auto phiOk = [&](const CaloParticle& p) {
       float dphi = deltaPhi(atan2f(p.py(), p.px()), meanPhi_);

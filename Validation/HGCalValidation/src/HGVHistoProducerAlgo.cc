@@ -2,6 +2,8 @@
 #include <cmath>
 #include <numeric>
 #include <iomanip>
+#include <iostream>
+#include <limits>
 #include <sstream>
 
 #include "Validation/HGCalValidation/interface/HGVHistoProducerAlgo.h"
@@ -2674,7 +2676,9 @@ void HGVHistoProducerAlgo::tracksters_to_SimTracksters_fp(const Histograms& hist
                                                           const std::vector<CaloParticle>& cP,
                                                           const std::vector<size_t>& cPIndices,
                                                           const std::vector<size_t>& cPSelectedIndices,
-                                                          const edm::ProductID& cPHandle_id) const {
+                                                          const edm::ProductID& cPHandle_id,
+                                                          const std::vector<double>* displacementR,
+                                                          const edm::EventID& eventId) const {
   const auto nTracksters = trackstersToSimTrackstersMap.getMap().size();
   const auto nSimTracksters = simTrackstersToTrackstersMap.getMap().size();
   std::vector<int> tracksters_FakeMerge(nTracksters, 0);
@@ -2763,15 +2767,40 @@ void HGVHistoProducerAlgo::tracksters_to_SimTracksters_fp(const Histograms& hist
     const auto sts_time = simTrackster.time();
     float inv_simtrackster_energy = 1.f / sts_en;
 
-    const auto displacement = resolveSimTrackDisplacement(getSimTrack(cP[cpId]));
+    const auto gen_R = displacementR->at(0);
+    const auto simTrackDisplacement = resolveSimTrackDisplacement(getSimTrack(cP[cpId]));
+    const auto pcaDisplacement = resolveRecoTracksterDisplacement(simTrackster);
+    auto bestRecoTrackster_R = std::numeric_limits<double>::quiet_NaN();
+    auto bestRecoTrackster_score = std::numeric_limits<double>::quiet_NaN();
+    const auto& associatedRecoTracksters = simTrackstersToTrackstersMap[simTracksterIndex];
+    if (!associatedRecoTracksters.empty()) {
+      const auto bestRecoTracksterIt = std::min_element(
+          associatedRecoTracksters.begin(),
+          associatedRecoTracksters.end(),
+          [](const auto& a, const auto& b) { return a.score() < b.score(); });
+      const auto& bestRecoTrackster = *simTrackstersToTrackstersMap.getRefSecond(bestRecoTracksterIt->index());
+      bestRecoTrackster_R = resolveRecoTracksterDisplacement(bestRecoTrackster).R;
+      bestRecoTrackster_score = bestRecoTracksterIt->score();
+    }
+    std::cout << "[DISPLDEBUG]"
+              << " run=" << eventId.run() << " lumi=" << eventId.luminosityBlock()
+              << " event=" << eventId.event() << " collectionIndex=" << count
+              << " valType=" << static_cast<int>(valType)
+              << " simTracksterIndex=" << simTracksterIndex << " cpId=" << cpId << " sts_eta=" << sts_eta
+              << " sts_phi=" << sts_phi << " sts_en=" << sts_en << " simTrack_R=" << simTrackDisplacement.R
+              << " simTrack_alpha=" << simTrackDisplacement.alpha << " PCA_R=" << pcaDisplacement.R
+              << " PCA_alpha=" << pcaDisplacement.alpha << " gen_R=" << gen_R
+              << " bestRecoTrackster_R=" << bestRecoTrackster_R
+              << " bestRecoTrackster_score=" << bestRecoTrackster_score
+              << std::endl;
 
     histograms.h_denom_caloparticle_eta[valType][count]->Fill(sts_eta);
     histograms.h_denom_caloparticle_phi[valType][count]->Fill(sts_phi);
     histograms.h_denom_caloparticle_en[valType][count]->Fill(sts_en);
     histograms.h_denom_caloparticle_pt[valType][count]->Fill(sts_pt);
 
-    histograms.h_denom_caloparticle_R[valType][count]->Fill(displacement.R);
-    histograms.h_denom_caloparticle_alpha[valType][count]->Fill(displacement.alpha);
+    histograms.h_denom_caloparticle_R[valType][count]->Fill(simTrackDisplacement.R);
+    histograms.h_denom_caloparticle_alpha[valType][count]->Fill(simTrackDisplacement.alpha);
     histograms.h_denom_caloparticle_time[valType][count]->Fill(sts_time);
 
     //Loop through related Tracksters here
@@ -2813,8 +2842,8 @@ void HGVHistoProducerAlgo::tracksters_to_SimTracksters_fp(const Histograms& hist
         histograms.h_numEff_caloparticle_phi[valType][count]->Fill(sts_phi);
         histograms.h_numEff_caloparticle_en[valType][count]->Fill(sts_en);
         histograms.h_numEff_caloparticle_pt[valType][count]->Fill(sts_pt);
-        histograms.h_numEff_caloparticle_R[valType][count]->Fill(displacement.R);
-        histograms.h_numEff_caloparticle_alpha[valType][count]->Fill(displacement.alpha);
+        histograms.h_numEff_caloparticle_R[valType][count]->Fill(simTrackDisplacement.R);
+        histograms.h_numEff_caloparticle_alpha[valType][count]->Fill(simTrackDisplacement.alpha);
         histograms.h_numEff_caloparticle_time[valType][count]->Fill(sts_time);
       }
 
@@ -2832,8 +2861,8 @@ void HGVHistoProducerAlgo::tracksters_to_SimTracksters_fp(const Histograms& hist
       histograms.h_num_caloparticle_phi[valType][count]->Fill(sts_phi);
       histograms.h_num_caloparticle_en[valType][count]->Fill(sts_en);
       histograms.h_num_caloparticle_pt[valType][count]->Fill(sts_pt);
-      histograms.h_num_caloparticle_R[valType][count]->Fill(displacement.R);
-      histograms.h_num_caloparticle_alpha[valType][count]->Fill(displacement.alpha);
+      histograms.h_num_caloparticle_R[valType][count]->Fill(simTrackDisplacement.R);
+      histograms.h_num_caloparticle_alpha[valType][count]->Fill(simTrackDisplacement.alpha);
       histograms.h_num_caloparticle_time[valType][count]->Fill(sts_time);
 
       if (tracksters_PurityDuplicate[simTracksterIndex] > 1) {
@@ -2841,8 +2870,8 @@ void HGVHistoProducerAlgo::tracksters_to_SimTracksters_fp(const Histograms& hist
         histograms.h_numDup_trackster_phi[valType][count]->Fill(sts_phi);
         histograms.h_numDup_trackster_en[valType][count]->Fill(sts_en);
         histograms.h_numDup_trackster_pt[valType][count]->Fill(sts_pt);
-        histograms.h_numDup_trackster_R[valType][count]->Fill(displacement.R);
-        histograms.h_numDup_trackster_alpha[valType][count]->Fill(displacement.alpha);
+        histograms.h_numDup_trackster_R[valType][count]->Fill(simTrackDisplacement.R);
+        histograms.h_numDup_trackster_alpha[valType][count]->Fill(simTrackDisplacement.alpha);
         histograms.h_numDup_trackster_time[valType][count]->Fill(sts_time);
       }
     }
@@ -2861,6 +2890,8 @@ void HGVHistoProducerAlgo::fill_trackster_histos(
     std::vector<SimCluster> const& sC,
     const edm::ProductID& cPHandle_id,
     std::vector<CaloParticle> const& cP,
+    const std::vector<double>* displacementR,
+    const edm::EventID& eventId,
     std::vector<size_t> const& cPIndices,
     std::vector<size_t> const& cPSelectedIndices,
     std::unordered_map<DetId, const unsigned int> const& hitMap,
@@ -3066,7 +3097,9 @@ void HGVHistoProducerAlgo::fill_trackster_histos(
                                    cP,
                                    cPIndices,
                                    cPSelectedIndices,
-                                   cPHandle_id);
+                                   cPHandle_id,
+                                   displacementR,
+                                   eventId);
 
     tracksters_to_SimTracksters_fp(histograms,
                                    count,
@@ -3077,7 +3110,9 @@ void HGVHistoProducerAlgo::fill_trackster_histos(
                                    cP,
                                    cPIndices,
                                    cPSelectedIndices,
-                                   cPHandle_id);
+                                   cPHandle_id,
+                                   displacementR,
+                                   eventId);
 
     tracksters_to_SimTracksters_fp(histograms,
                                    count,
@@ -3088,7 +3123,9 @@ void HGVHistoProducerAlgo::fill_trackster_histos(
                                    cP,
                                    cPIndices,
                                    cPSelectedIndices,
-                                   cPHandle_id);
+                                   cPHandle_id,
+                                   displacementR,
+                                   eventId);
 
     tracksters_to_SimTracksters_fp(histograms,
                                    count,
@@ -3099,7 +3136,9 @@ void HGVHistoProducerAlgo::fill_trackster_histos(
                                    cP,
                                    cPIndices,
                                    cPSelectedIndices,
-                                   cPHandle_id);
+                                   cPHandle_id,
+                                   displacementR,
+                                   eventId);
   }
 }
 

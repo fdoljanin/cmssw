@@ -241,6 +241,7 @@ namespace edm {
 
     produces<HepMCProduct>("unsmeared");
     produces<GenEventInfoProduct>();
+    produces<std::vector<double>>("displacementR");
   }
 
   void DisplacedParticleGunProducer::fillDescriptions(ConfigurationDescriptions& descriptions) {
@@ -315,6 +316,8 @@ namespace edm {
     }
 
     int barcode = 1;
+    auto displacementR = std::make_unique<std::vector<double>>();
+    displacementR->reserve(fNParticles);
 
     for (int ip = 0; ip < fNParticles; ++ip) {
       // --- Sample displaced vertex in transverse annulus (z fixed) ---
@@ -377,6 +380,11 @@ namespace edm {
         std::tie(px, py, pz) = computeMomentum(pt, theta, phi);
       }
 
+      const double tAtZero = (0.0 - fZVtx) / pz;
+      const double xAtZero = xVtx + tAtZero * px;
+      const double yAtZero = yVtx + tAtZero * py;
+      displacementR->push_back(std::hypot(xAtZero, yAtZero));
+
       const double p2 = px * px + py * py + pz * pz;
       const double energy = std::sqrt(p2 + mass * mass);
 
@@ -410,6 +418,8 @@ namespace edm {
 
     auto genEventInfo = std::make_unique<GenEventInfoProduct>(fEvt);
     e.put(std::move(genEventInfo));
+
+    e.put(std::move(displacementR), "displacementR");
 
     if (fVerbosity > 0) {
       std::cout << " DisplacedParticleGunProducer : Event Generation Done. " << std::endl;

@@ -107,6 +107,7 @@ protected:
   edm::EDGetTokenT<std::vector<CaloParticle>> label_cp_effic;
   edm::EDGetTokenT<std::vector<CaloParticle>> label_cp_fake;
   edm::EDGetTokenT<std::vector<SimVertex>> simVertices_;
+  edm::EDGetTokenT<std::vector<double>> displacementRToken_;
   std::vector<edm::EDGetTokenT<std::vector<float>>> clustersMaskTokens_;
   edm::EDGetTokenT<std::unordered_map<DetId, const unsigned int>> hitMap_;
   edm::EDGetTokenT<ticl::RecoToSimCollectionT<reco::CaloClusterCollection>> associatorMapRtS;

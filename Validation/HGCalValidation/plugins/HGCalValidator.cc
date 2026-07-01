@@ -106,6 +106,7 @@ HGCalValidator::HGCalValidator(const edm::ParameterSet& pset)
   label_cp_fake = consumes<std::vector<CaloParticle>>(label_cp_fake_tag);
 
   simVertices_ = consumes<std::vector<SimVertex>>(pset.getParameter<edm::InputTag>("simVertices"));
+  displacementRToken_ = consumes<std::vector<double>>(pset.getParameter<edm::InputTag>("displacementR"));
 
   for (auto& itag : label_clustersmask) {
     clustersMaskTokens_.push_back(consumes<std::vector<float>>(itag));
@@ -371,6 +372,13 @@ void HGCalValidator::dqmAnalyze(const edm::Event& event,
   event.getByToken(simVertices_, simVerticesHandle);
   std::vector<SimVertex> const& simVertices = *simVerticesHandle;
 
+  edm::Handle<std::vector<double>> displacementRHandle;
+  event.getByToken(displacementRToken_, displacementRHandle);
+  const std::vector<double>* displacementR = displacementRHandle.isValid() ? displacementRHandle.product() : nullptr;
+  if (displacementR) {
+    LogTrace("HGCalValidator") << "DisplacedParticleGun displacementR entries: " << displacementR->size();
+  }
+
   edm::Handle<std::vector<CaloParticle>> caloParticleHandle;
   event.getByToken(label_cp_effic, caloParticleHandle);
   std::vector<CaloParticle> const& caloParticles = *caloParticleHandle;
@@ -618,6 +626,8 @@ void HGCalValidator::dqmAnalyze(const edm::Event& event,
                                                 simClusters,
                                                 caloParticleHandle.id(),
                                                 caloParticles,
+                                                displacementR,
+                                                event.id(),
                                                 cPIndices,
                                                 selected_cPeff,
                                                 hitMap,
@@ -793,6 +803,7 @@ void HGCalValidator::fillDescriptions(edm::ConfigurationDescriptions& descriptio
     desc.add<edm::ParameterSetDescription>("histoProducerAlgoBlock", psd1);
   }
   desc.add<edm::InputTag>("hits", edm::InputTag("recHitMapProducer", "RefProdVectorHGCRecHitCollection"));
+  desc.add<edm::InputTag>("displacementR", edm::InputTag("generator", "displacementR"));
   desc.add<edm::InputTag>("label_lcl", edm::InputTag("hgcalMergeLayerClusters"));
   desc.add<std::vector<edm::InputTag>>("label_tst",
                                        {

@@ -332,7 +332,9 @@ public:
                                       const std::vector<CaloParticle>& cP,
                                       const std::vector<size_t>& cPIndices,
                                       const std::vector<size_t>& cPSelectedIndices,
-                                      const edm::ProductID& cPHandle_id) const;
+                                      const edm::ProductID& cPHandle_id,
+                                      const std::vector<double>* displacementR,
+                                      const edm::EventID& eventId) const;
 
   void fill_info_histos(const Histograms& histograms, unsigned int layers) const;
   void fill_caloparticle_histos(const Histograms& histograms,
@@ -386,6 +388,8 @@ public:
                              std::vector<SimCluster> const& sC,
                              const edm::ProductID& cPHandle_id,
                              std::vector<CaloParticle> const& cP,
+                             const std::vector<double>* displacementR,
+                             const edm::EventID& eventId,
                              std::vector<size_t> const& cPIndices,
                              std::vector<size_t> const& cPSelectedIndices,
                              std::unordered_map<DetId, const unsigned int> const& hitMap,

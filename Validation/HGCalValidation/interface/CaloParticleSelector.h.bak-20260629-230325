@@ -6,6 +6,7 @@
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/Math/interface/PtEtaPhiMass.h"
 #include "DataFormats/Math/interface/deltaPhi.h"
+#include <iostream>
 
 class CaloParticleSelector {
 public:
@@ -62,15 +63,29 @@ public:
   // Operator() performs the selection: e.g. if (cPSelector(cp)) {...}
   // For the moment there shouldn't be any SimTracks from different crossings in the CaloParticle.
   bool operator()(const CaloParticle& cp, std::vector<SimVertex> const& simVertices) const {
-    // signal only means no PU particles
-    if (signalOnly_ && !(cp.eventId().bunchCrossing() == 0 && cp.eventId().event() == 0))
-      return false;
-    // intime only means no OOT PU particles
-    if (intimeOnly_ && !(cp.eventId().bunchCrossing() == 0))
-      return false;
+    auto debugDecision = [&](const char* decision, const char* reason) {
+      std::cout << "CALODEBUG " << decision << " reason=" << reason << " pdgId=" << cp.pdgId()
+                << " charge=" << cp.charge() << " status=" << cp.status() << " pt=" << cp.pt()
+                << " eta=" << etaFromXYZ(cp.px(), cp.py(), cp.pz()) << " phi=" << atan2f(cp.py(), cp.px())
+                << " simClusters=" << cp.simClusters().size() << " bx=" << cp.eventId().bunchCrossing()
+                << " event=" << cp.eventId().event() << std::endl;
+    };
 
-    if (cp.simClusters().size() > maxSimClusters_)
+    // signal only means no PU particles
+    if (signalOnly_ && !(cp.eventId().bunchCrossing() == 0 && cp.eventId().event() == 0)) {
+      debugDecision("rejected", "signalOnly");
       return false;
+    }
+    // intime only means no OOT PU particles
+    if (intimeOnly_ && !(cp.eventId().bunchCrossing() == 0)) {
+      debugDecision("rejected", "intimeOnly");
+      return false;
+    }
+
+    if (cp.simClusters().size() > maxSimClusters_) {
+      debugDecision("rejected", "maxSimClusters");
+      return false;
+    }
 
     auto pdgid = cp.pdgId();
     if (!pdgId_.empty()) {
@@ -81,17 +96,22 @@ public:
           break;
         }
       }
-      if (!testId)
+      if (!testId) {
+        debugDecision("rejected", "pdgId");
         return false;
+      }
     }
 
-    if (chargedOnly_ && cp.charge() == 0)
+    if (chargedOnly_ && cp.charge() == 0) {
+      debugDecision("rejected", "chargedOnly");
       return false;  //select only if charge!=0
+    }
 
     // select only stable particles
     if (stableOnly_) {
       for (CaloParticle::genp_iterator j = cp.genParticle_begin(); j != cp.genParticle_end(); ++j) {
         if (j->get() == nullptr || j->get()->status() != 1) {
+          debugDecision("rejected", "stableOnlyGenParticleStatus");
           return false;
         }
       }
@@ -99,6 +119,7 @@ public:
       // test for remaining unstabled due to lack of genparticle pointer
       std::vector<int> pdgids{11, 13, 211, 321, 2212, 3112, 3222, 3312, 3334};
       if (cp.status() == -99 && (!std::binary_search(pdgids.begin(), pdgids.end(), std::abs(pdgid)))) {
+        debugDecision("rejected", "stableOnlyCaloParticleStatus");
         return false;
       }
     }
@@ -108,16 +129,19 @@ public:
     if (std::abs(pdgid) != 11) {
       if (notConvertedOnly_) {
         if (cp.g4Tracks()[0].getPositionAtBoundary() == math::XYZTLorentzVectorF(0, 0, 0, 0)) {
+          debugDecision("rejected", "notConvertedOnlyZeroBoundaryPosition");
           return false;
         }
         if (cp.g4Tracks()[0].getMomentumAtBoundary() == math::XYZTLorentzVectorF(0, 0, 0, 0)) {
+          debugDecision("rejected", "notConvertedOnlyZeroBoundaryMomentum");
           return false;
         }
       }
     }
 
     auto etaOk = [&](const CaloParticle& p) -> bool {
-      return true;
+      float eta = etaFromXYZ(p.px(), p.py(), p.pz());
+      return (eta >= minRapidity_) & (eta <= maxRapidity_);
     };
     auto phiOk = [&](const CaloParticle& p) {
       float dphi = deltaPhi(atan2f(p.py(), p.px()), meanPhi_);
@@ -128,7 +152,21 @@ public:
       return pt2 >= ptMin2_ && pt2 <= ptMax2_;
     };
 
-    return (ptOk(cp) && etaOk(cp) && phiOk(cp));
+    if (!ptOk(cp)) {
+      debugDecision("rejected", "pt");
+      return false;
+    }
+    if (!etaOk(cp)) {
+      debugDecision("rejected", "eta");
+      return false;
+    }
+    if (!phiOk(cp)) {
+      debugDecision("rejected", "phi");
+      return false;
+    }
+
+    debugDecision("accepted", "accepted");
+    return true;
   }
 
 private:

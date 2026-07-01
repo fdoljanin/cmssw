@@ -363,7 +363,7 @@ void PatternRecognitionbyCLUE3D<TILES>::makeTracksters(
                               *rhtools,
                               computeLocalTime_,
                               true,  // energy weighting
-                              usePCACleaning_,
+                              true,
                               isBarrel_);
 
   if (PatternRecognitionAlgoBaseT<TILES>::algo_verbosity_ > VerbosityLevel::Advanced) {

@@ -33,6 +33,9 @@ void ticl::SeedingRegionByL1::makeRegions(const edm::Event &ev,
   auto l1GTCands = ev.getHandle(l1GTCandsToken_);
   edm::ProductID l1gtcandsId = l1GTCands.id();
 
+  cout << "debug_seedsetup min " << minAbsEta_ << " max " << maxAbsEta_ << endl;
+
+
   for (size_t indx = 0; indx < (*l1GTCands).size(); indx++) {
     const auto &l1GTCand = (*l1GTCands)[indx];
     double offlinePt = l1GTCand.pt();
@@ -47,6 +50,17 @@ void ticl::SeedingRegionByL1::makeRegions(const edm::Event &ev,
     } else {
       passQuality = true;
     }
+
+    cout << "debug_seeding "
+    << " eventId " << ev.id()
+    << " index " << indx
+    << " eta " << l1GTCand.eta()
+    << " ptok " << !(offlinePt < minPt_)
+    << " etaok " << !((std::abs(l1GTCand.eta()) < minAbsEta_) || (std::abs(l1GTCand.eta()) > maxAbsEta_))
+    << " passquality " << passQuality
+    << " totalok " << !((offlinePt < minPt_) || (std::abs(l1GTCand.eta()) < minAbsEta_) || (std::abs(l1GTCand.eta()) > maxAbsEta_) ||
+        !passQuality)
+    <<  endl;
 
     if ((offlinePt < minPt_) || (std::abs(l1GTCand.eta()) < minAbsEta_) || (std::abs(l1GTCand.eta()) > maxAbsEta_) ||
         !passQuality) {
