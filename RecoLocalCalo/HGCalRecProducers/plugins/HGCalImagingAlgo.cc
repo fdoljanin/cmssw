@@ -9,8 +9,6 @@
 #include "RecoEcal/EgammaCoreTools/interface/PositionCalc.h"
 //
 #include "DataFormats/CaloRecHit/interface/CaloID.h"
-#include "oneapi/tbb/task_arena.h"
-#include "oneapi/tbb.h"
 
 using namespace hgcal_clustering;
 
@@ -93,23 +91,21 @@ void HGCalImagingAlgo::populate(const HGCRecHitCollection &hits) {
 void HGCalImagingAlgo::makeClusters() {
   layerClustersPerLayer_.resize(2 * maxlayer_ + 2);
   // assign all hits in each layer to a cluster core or halo
-  tbb::this_task_arena::isolate([&] {
-    tbb::parallel_for(size_t(0), size_t(2 * maxlayer_ + 2), [&](size_t i) {
-      KDTreeBox bounds(minpos_[i][0], maxpos_[i][0], minpos_[i][1], maxpos_[i][1]);
-      KDTree hit_kdtree;
-      hit_kdtree.build(points_[i], bounds);
+  for (size_t i = 0; i < size_t(2 * maxlayer_ + 2); ++i) {
+    KDTreeBox bounds(minpos_[i][0], maxpos_[i][0], minpos_[i][1], maxpos_[i][1]);
+    KDTree hit_kdtree;
+    hit_kdtree.build(points_[i], bounds);
 
-      unsigned int actualLayer =
-          i > maxlayer_ ? (i - (maxlayer_ + 1)) : i;  // maps back from index used for KD trees to actual layer
+    unsigned int actualLayer =
+        i > maxlayer_ ? (i - (maxlayer_ + 1)) : i;  // maps back from index used for KD trees to actual layer
 
-      double maxdensity = calculateLocalDensity(points_[i], hit_kdtree, actualLayer);  // also stores rho (energy
-                                                                                       // density) for each point (node)
-      // calculate distance to nearest point with higher density storing
-      // distance (delta) and point's index
-      calculateDistanceToHigher(points_[i]);
-      findAndAssignClusters(points_[i], hit_kdtree, maxdensity, bounds, actualLayer, layerClustersPerLayer_[i]);
-    });
-  });
+    double maxdensity = calculateLocalDensity(points_[i], hit_kdtree, actualLayer);  // also stores rho (energy
+                                                                                     // density) for each point (node)
+    // calculate distance to nearest point with higher density storing
+    // distance (delta) and point's index
+    calculateDistanceToHigher(points_[i]);
+    findAndAssignClusters(points_[i], hit_kdtree, maxdensity, bounds, actualLayer, layerClustersPerLayer_[i]);
+  }
   //Now that we have the density per point we can store it
   for (auto const &p : points_) {
     setDensity(p);

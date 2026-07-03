@@ -1,4 +1,5 @@
 #include <memory>
+#include <iostream>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/stream/EDProducer.h"
@@ -78,14 +79,19 @@ HGCalRawToDigi::HGCalRawToDigi(const edm::ParameterSet& iConfig)
       moduleIndexToken_(esConsumes()),
       configToken_(esConsumes()),
       doSerial_(iConfig.getParameter<bool>("doSerial")),
-      headersOnly_(iConfig.getParameter<bool>("headersOnly")) {}
+      headersOnly_(iConfig.getParameter<bool>("headersOnly")) {
+  std::cout << "[HGCalRawToDigi DEBUG] constructor doSerial=" << doSerial_
+            << " headersOnly=" << headersOnly_ << std::endl;
+}
 
 void HGCalRawToDigi::beginRun(edm::Run const& iRun, edm::EventSetup const& iSetup) {
   // TODO @hqucms
   // init unpacker with proper configs
+  std::cout << "[HGCalRawToDigi DEBUG] beginRun" << std::endl;
 }
 
 void HGCalRawToDigi::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  std::cout << "[HGCalRawToDigi DEBUG] produce start event=" << iEvent.id() << std::endl;
   // retrieve logical mapping
   const auto& moduleIndexer = iSetup.getData(moduleIndexToken_);
   //const auto& cellIndexer = iSetup.getData(cellIndexToken_);
@@ -94,6 +100,10 @@ void HGCalRawToDigi::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) 
   hgcaldigi::HGCalDigiHost digis(cms::alpakatools::host(), moduleIndexer.maxDataSize());
   hgcaldigi::HGCalECONDPacketInfoHost econdPacketInfo(cms::alpakatools::host(), moduleIndexer.maxModulesCount());
   hgcaldigi::HGCalFEDPacketInfoHost fedPacketInfo(cms::alpakatools::host(), moduleIndexer.fedCount());
+
+  std::cout << "[HGCalRawToDigi DEBUG] mapping maxDataSize=" << moduleIndexer.maxDataSize()
+            << " maxModules=" << moduleIndexer.maxModulesCount()
+            << " fedCount=" << moduleIndexer.fedCount() << std::endl;
 
   // retrieve the FED raw data
   const auto& fedBuffer = iEvent.get(fedRawToken_);
@@ -104,38 +114,49 @@ void HGCalRawToDigi::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) 
 
   //serial unpacking calls
   if (doSerial_) {
+    std::cout << "[HGCalRawToDigi DEBUG] serial branch" << std::endl;
     for (unsigned fedId = 0; fedId < moduleIndexer.fedCount(); ++fedId) {
       const auto& frs = moduleIndexer.fedReadoutSequences()[fedId];
       if (frs.readoutTypes_.empty()) {
+        std::cout << "[HGCalRawToDigi DEBUG] serial skip empty readout fedId=" << fedId << std::endl;
         continue;
       }
 
       const auto& fed_data = fedBuffer.fragmentData(fedId);
       fedPacketInfo.view()[fedId].FEDPayload() = fed_data.size();
-      if (fed_data.size() == 0)
+      if (fed_data.size() == 0) {
+        std::cout << "[HGCalRawToDigi DEBUG] serial skip zero payload fedId=" << fedId << std::endl;
         continue;
+      }
+      std::cout << "[HGCalRawToDigi DEBUG] serial unpack fedId=" << fedId
+                << " payload=" << fed_data.size() << std::endl;
       fedPacketInfo.view()[fedId].FEDUnpackingFlag() =
           callUnpacker(fedId, fed_data, moduleIndexer, config, digis, fedPacketInfo, econdPacketInfo);
     }
   }
   //parallel unpacking calls
   else {
-    oneapi::tbb::this_task_arena::isolate([&]() {
-      oneapi::tbb::parallel_for(0U, moduleIndexer.fedCount(), [&](unsigned fedId) {
-        const auto& frs = moduleIndexer.fedReadoutSequences()[fedId];
-        if (frs.readoutTypes_.empty()) {
-          return;
-        }
-        const auto& fed_data = fedBuffer.fragmentData(fedId);
-        fedPacketInfo.view()[fedId].FEDPayload() = fed_data.size();
-        if (fed_data.size() == 0)
-          return;
-        fedPacketInfo.view()[fedId].FEDUnpackingFlag() =
-            callUnpacker(fedId, fed_data, moduleIndexer, config, digis, fedPacketInfo, econdPacketInfo);
-        return;
-      });
-    });
+    std::cout << "[HGCalRawToDigi DEBUG] would use tbb, running sequential debug path" << std::endl;
+    for (unsigned fedId = 0; fedId < moduleIndexer.fedCount(); ++fedId) {
+      const auto& frs = moduleIndexer.fedReadoutSequences()[fedId];
+      if (frs.readoutTypes_.empty()) {
+        std::cout << "[HGCalRawToDigi DEBUG] tbb-debug skip empty readout fedId=" << fedId << std::endl;
+        continue;
+      }
+      const auto& fed_data = fedBuffer.fragmentData(fedId);
+      fedPacketInfo.view()[fedId].FEDPayload() = fed_data.size();
+      if (fed_data.size() == 0) {
+        std::cout << "[HGCalRawToDigi DEBUG] tbb-debug skip zero payload fedId=" << fedId << std::endl;
+        continue;
+      }
+      std::cout << "[HGCalRawToDigi DEBUG] tbb-debug unpack fedId=" << fedId
+                << " payload=" << fed_data.size() << std::endl;
+      fedPacketInfo.view()[fedId].FEDUnpackingFlag() =
+          callUnpacker(fedId, fed_data, moduleIndexer, config, digis, fedPacketInfo, econdPacketInfo);
+    }
   }
+
+  std::cout << "[HGCalRawToDigi DEBUG] produce end event=" << iEvent.id() << std::endl;
 
   // put information to the event
   iEvent.emplace(digisToken_, std::move(digis));
@@ -151,6 +172,9 @@ uint16_t HGCalRawToDigi::callUnpacker(unsigned fedId,
                                       hgcaldigi::HGCalDigiHost& digis,
                                       hgcaldigi::HGCalFEDPacketInfoHost& fedPacketInfo,
                                       hgcaldigi::HGCalECONDPacketInfoHost& econdPacketInfo) {
+  std::cout << "[HGCalRawToDigi DEBUG] callUnpacker fedId=" << fedId
+            << " payload=" << fed_data.size() << std::endl;
+
   uint16_t status = unpacker_.parseFEDData(
       fedId, fed_data, moduleIndexer, config, digis, fedPacketInfo, econdPacketInfo, headersOnly_);
   return status;

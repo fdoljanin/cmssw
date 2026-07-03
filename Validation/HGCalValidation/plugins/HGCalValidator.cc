@@ -1,5 +1,6 @@
 #include <memory>
 #include <numbers>
+#include <iostream>
 
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
@@ -361,6 +362,7 @@ void HGCalValidator::dqmAnalyze(const edm::Event& event,
                                 const Histograms& histograms) const {
   using namespace reco;
 
+
   LogDebug("HGCalValidator") << "\n===================================================="
                              << "\n"
                              << "Analyzing new event"
@@ -470,6 +472,61 @@ void HGCalValidator::dqmAnalyze(const edm::Event& event,
     return;
 
   const reco::CaloClusterCollection& clusters = *clusterHandle;
+
+
+  if (event.id().event() == 7) {
+    std::cout << "\n================ EVENT 7 LAYERCLUSTERS ================\n";
+    std::cout << "run = " << event.id().run()
+              << ", lumi = " << event.id().luminosityBlock()
+              << ", event = " << event.id().event() << "\n";
+    std::cout << "Number of layerclusters: " << clusters.size() << "\n";
+
+    for (unsigned int lcIdx = 0; lcIdx < clusters.size(); ++lcIdx) {
+      const auto& lc = clusters[lcIdx];
+
+      std::cout << "\n--- new layercluster " << lcIdx << " ---\n";
+      std::cout << "LC energy = " << lc.energy()
+                << ", eta = " << lc.eta()
+                << ", phi = " << lc.phi()
+                << ", x = " << lc.x()
+                << ", y = " << lc.y()
+                << ", z = " << lc.z()
+                << "\n";
+
+      const auto& hitsAndFractions = lc.hitsAndFractions();
+      std::cout << "Number of rechits in LC: " << hitsAndFractions.size() << "\n";
+
+      for (unsigned int hitIdx = 0; hitIdx < hitsAndFractions.size(); ++hitIdx) {
+        const DetId detid = hitsAndFractions[hitIdx].first;
+        const float fraction = hitsAndFractions[hitIdx].second;
+
+        std::cout << "  rechit " << hitIdx
+                  << " detid.rawId = " << detid.rawId()
+                  << " fraction = " << fraction;
+
+        const auto hitMapIt = hitMap.find(detid);
+        if (hitMapIt != hitMap.end()) {
+          const unsigned int rechitIndex = hitMapIt->second;
+          const auto& rechit = rechitSpan[rechitIndex];
+          const auto position = tools_->getPosition(detid);
+
+          std::cout << " rechitIndex = " << rechitIndex
+                    << " rechitEnergy = " << rechit.energy()
+                    << " layer = " << tools_->getLayerWithOffset(detid)
+                    << " pos = (" << position.x()
+                    << ", " << position.y()
+                    << ", " << position.z()
+                    << ")";
+        } else {
+          std::cout << " [rechit not found in hitMap]";
+        }
+
+        std::cout << "\n";
+      }
+    }
+
+    std::cout << "========================================================\n";
+  }
 
   std::vector<edm::Handle<TracksterToTracksterMap>> tracksterToTracksterMapsHandles;
   for (auto& token : tracksterToTracksterAssociatorsTokens_) {

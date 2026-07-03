@@ -17,6 +17,11 @@
 #include "Geometry/HGCalCommonData/interface/HGCalGeometryMode.h"
 #include "DataFormats/Math/interface/liblogintpack.h"
 #include <algorithm>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <mutex>
+#include <sstream>
 #include "FWCore/Utilities/interface/transform.h"
 
 //#define EDM_ML_DEBUG
@@ -223,6 +228,96 @@ namespace {
       }
     }
   }
+
+  std::mutex& hgcalDigitizerLogMutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  void logHGCDigitizer(std::ostringstream& msg) {
+    std::lock_guard<std::mutex> lock(hgcalDigitizerLogMutex());
+    std::cout << msg.str();
+  }
+
+  void logPCaloHitSummary(const edm::EventID& eventId,
+                          const std::string& digiCollection,
+                          const std::string& hitCollection,
+                          const edm::Handle<edm::PCaloHitContainer>& hits) {
+    std::ostringstream msg;
+    msg << "[HGCDIGITIZERDEBUG] event=" << eventId << " stage=input_hits digiCollection=" << digiCollection
+        << " hitCollection=" << hitCollection << " valid=" << hits.isValid();
+
+    if (hits.isValid()) {
+      uint64_t digest = 1469598103934665603ULL;
+      double energySum = 0.;
+      double timeSum = 0.;
+
+      for (const auto& hit : *hits) {
+        energySum += hit.energy();
+        timeSum += hit.time();
+        digest ^= hit.id();
+        digest *= 1099511628211ULL;
+        digest ^= static_cast<uint64_t>(hit.energy() * 1000000.);
+        digest *= 1099511628211ULL;
+        digest ^= static_cast<uint64_t>((hit.time() + 10000.) * 1000000.);
+        digest *= 1099511628211ULL;
+      }
+
+      msg << " size=" << hits->size() << " energy_sum=" << std::setprecision(12) << energySum
+          << " time_sum=" << timeSum << " digest=" << digest;
+      if (!hits->empty()) {
+        msg << " first_id=" << hits->front().id() << " first_energy=" << hits->front().energy()
+            << " first_time=" << hits->front().time() << " last_id=" << hits->back().id()
+            << " last_energy=" << hits->back().energy() << " last_time=" << hits->back().time();
+      }
+    }
+
+    msg << '\n';
+    logHGCDigitizer(msg);
+  }
+
+  void logDigiCollectionSummary(const edm::EventID& eventId,
+                                const std::string& digiCollection,
+                                const char* stage,
+                                const HGCalDigiCollection& collection) {
+    std::ostringstream msg;
+    uint64_t digest = 1469598103934665603ULL;
+    uint64_t sampleRawSum = 0;
+    uint64_t sampleDataSum = 0;
+
+    for (const auto& digi : collection) {
+      digest ^= digi.id().rawId();
+      digest *= 1099511628211ULL;
+      for (int i = 0; i < digi.size(); ++i) {
+        const uint32_t raw = digi.sample(i).raw();
+        sampleRawSum += raw;
+        sampleDataSum += digi.sample(i).data();
+        digest ^= raw;
+        digest *= 1099511628211ULL;
+      }
+    }
+
+    msg << "[HGCDIGITIZERDEBUG] event=" << eventId << " stage=" << stage << " digiCollection=" << digiCollection
+        << " size=" << collection.size() << " sample_raw_sum=" << sampleRawSum
+        << " sample_data_sum=" << sampleDataSum << " digest=" << digest;
+    if (!collection.empty()) {
+      const auto& first = *collection.begin();
+      const auto& last = *std::prev(collection.end());
+      msg << " first_detid=" << first.id().rawId() << " last_detid=" << last.id().rawId();
+    }
+    msg << '\n';
+    logHGCDigitizer(msg);
+  }
+
+  void logAccumulatorSummary(const edm::EventID& eventId,
+                             const std::string& digiCollection,
+                             const hgc::HGCSimHitDataAccumulator& accumulator,
+                             const hgc::HGCPUSimHitDataAccumulator& puAccumulator) {
+    std::ostringstream msg;
+    msg << "[HGCDIGITIZERDEBUG] event=" << eventId << " stage=pre_digitize digiCollection=" << digiCollection
+        << " accumulator_size=" << accumulator.size() << " pu_accumulator_size=" << puAccumulator.size() << '\n';
+    logHGCDigitizer(msg);
+  }
 }  //namespace
 
 HGCDigitizer::HGCDigitizer(const edm::ParameterSet& ps, edm::ConsumesCollector& iC)
@@ -313,6 +408,7 @@ void HGCDigitizer::finalizeEvent(edm::Event& e, edm::EventSetup const& es, CLHEP
   averageOccupancies_[idx] = (averageOccupancies_[idx] * (nEvents_ - 1) + thisOcc) / nEvents_;
 
   if (premixStage1_) {
+    logAccumulatorSummary(e.id(), digiCollection_, *simHitAccumulator_, *pusimHitAccumulator_);
     auto simRecord = std::make_unique<PHGCSimAccumulator>();
 
     if (!pusimHitAccumulator_->empty()) {
@@ -323,8 +419,10 @@ void HGCDigitizer::finalizeEvent(edm::Event& e, edm::EventSetup const& es, CLHEP
     e.put(std::move(simRecord), digiCollection());
 
   } else {
+    logAccumulatorSummary(e.id(), digiCollection_, *simHitAccumulator_, *pusimHitAccumulator_);
     auto digiResult = std::make_unique<HGCalDigiCollection>();
     theDigitizer_->run(digiResult, *simHitAccumulator_, theGeom, validIds_, digitizationType_, hre);
+    logDigiCollectionSummary(e.id(), digiCollection_, "output_digis", *digiResult);
     edm::LogVerbatim("HGCDigitizer") << "HGCDigitizer:: finalize event - produced " << digiResult->size()
                                      << " hits in det/subdet " << theDigitizer_->det() << "/"
                                      << theDigitizer_->subdet();
@@ -343,6 +441,7 @@ void HGCDigitizer::accumulate_forPreMix(edm::Event const& e,
   //get inputs
 
   const edm::Handle<edm::PCaloHitContainer>& hits = e.getHandle(hitToken_);
+  logPCaloHitSummary(e.id(), digiCollection_, hitCollection_, hits);
   if (!hits.isValid()) {
     edm::LogError("HGCDigitizer") << " @ accumulate_minbias : can't find " << hitCollection_ << " collection of "
                                   << hitsProducer_;
@@ -361,6 +460,7 @@ void HGCDigitizer::accumulate_forPreMix(edm::Event const& e,
 void HGCDigitizer::accumulate(edm::Event const& e, edm::EventSetup const& eventSetup, CLHEP::HepRandomEngine* hre) {
   //get inputs
   const edm::Handle<edm::PCaloHitContainer>& hits = e.getHandle(hitToken_);
+  logPCaloHitSummary(e.id(), digiCollection_, hitCollection_, hits);
   if (!hits.isValid()) {
     edm::LogError("HGCDigitizer") << " @ accumulate : can't find " << hitCollection_ << " collection of "
                                   << hitsProducer_;

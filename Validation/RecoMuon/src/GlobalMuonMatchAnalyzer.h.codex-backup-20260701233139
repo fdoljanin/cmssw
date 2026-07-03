@@ -24,6 +24,10 @@
 #include "DQMServices/Core/interface/DQMOneEDAnalyzer.h"
 #include "DQMServices/Core/interface/DQMStore.h"
 
+namespace reco {
+  class Track;
+}
+
 class InputTag;
 class TrackAssociatorBase;
 

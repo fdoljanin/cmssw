@@ -429,7 +429,7 @@ void SimTrackstersProducer::produce(edm::Event& evt, const edm::EventSetup& es) 
                               rhtools_,
                               computeLocalTime_,
                               true,
-                              false,
+                              true,
                               doBarrel_);
   result->shrink_to_fit();
   ticl::assignPCAtoTracksters(*result_fromCP,
@@ -439,7 +439,7 @@ void SimTrackstersProducer::produce(edm::Event& evt, const edm::EventSetup& es) 
                               rhtools_,
                               computeLocalTime_,
                               true,
-                              false,
+                              true,
                               doBarrel_);
 
   makePUTrackster(inputClusterMask, *output_mask, *resultPU, caloParticles_h.id(), 0);

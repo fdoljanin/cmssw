@@ -97,10 +97,8 @@ void HGCDigitizerBase::run(std::unique_ptr<HGCDigitizerBase::DColl>& digiColl,
     scalHFNose_.setGeometry(theGeom, HGCalSiNoiseMap<HFNoseDetId>::AUTO, myFEelectronics_->getTargetMipValue());
   }
   if (NoiseGeneration_Method_ == true) {
-    if (RandNoiseGenerationFlag_ == false) {
-      GenerateGaussianNoise(engine, NoiseMean_, NoiseStd_);
-      RandNoiseGenerationFlag_ = true;
-    }
+    GenerateGaussianNoise(engine, NoiseMean_, NoiseStd_);
+    RandNoiseGenerationFlag_ = true;
   }
   myFEelectronics_->generateTimeOffset(engine);
   if (digitizationType == 0)

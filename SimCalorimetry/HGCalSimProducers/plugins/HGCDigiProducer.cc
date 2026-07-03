@@ -7,6 +7,31 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Utilities/interface/StreamID.h"
 
+#include <cstdint>
+#include <string>
+
+namespace {
+  uint32_t deterministicHGCalDigiSeed(edm::EventID const& eventId, std::string const& digiCollection) {
+    uint64_t seed = 0x9e3779b97f4a7c15ULL;
+    auto mix = [&seed](uint64_t value) {
+      value += 0x9e3779b97f4a7c15ULL;
+      value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+      seed ^= value ^ (value >> 31);
+      seed *= 0x9e3779b97f4a7c15ULL;
+    };
+
+    mix(eventId.run());
+    mix(eventId.luminosityBlock());
+    mix(eventId.event());
+    for (unsigned char c : digiCollection) {
+      mix(c);
+    }
+
+    return static_cast<uint32_t>((seed % 900000000ULL) + 1ULL);
+  }
+}  // namespace
+
 //
 HGCDigiProducer::HGCDigiProducer(edm::ParameterSet const& pset,
                                  edm::ProducesCollector producesCollector,
@@ -27,6 +52,7 @@ HGCDigiProducer::HGCDigiProducer(edm::ParameterSet const& pset, edm::ConsumesCol
 void HGCDigiProducer::initializeEvent(edm::Event const& event, edm::EventSetup const& es) {
   edm::Service<edm::RandomNumberGenerator> rng;
   randomEngine_ = &rng->getEngine(event.streamID());
+  randomEngine_->setSeed(deterministicHGCalDigiSeed(event.id(), theDigitizer_.digiCollection()), 0);
   theDigitizer_.initializeEvent(event, es);
 }
 

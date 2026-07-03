@@ -1,5 +1,9 @@
 //STL includes
 #include <memory>
+#include <iostream>
+#include <iterator>
+#include <mutex>
+#include <sstream>
 
 //framework includes
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -12,6 +16,58 @@
 
 //other includes
 #include "DataFormats/HGCDigi/interface/HGCDigiCollections.h"
+
+namespace {
+  std::mutex& hgcalRawFakeLogMutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  void logHGCalRawFake(std::ostringstream& msg) {
+    std::lock_guard<std::mutex> lock(hgcalRawFakeLogMutex());
+    std::cout << msg.str();
+  }
+
+  void logDigiSummary(const edm::EventID& eventId,
+                      edm::StreamID streamId,
+                      const char* stage,
+                      const char* name,
+                      const edm::Handle<HGCalDigiCollection>& handle) {
+    std::ostringstream msg;
+    msg << "[HGCalRawToDigiFake DIGI] event=" << eventId << " stream=" << streamId.value() << " " << stage << "="
+        << name << " valid=" << handle.isValid();
+
+    if (handle.isValid()) {
+      const auto& collection = *handle;
+      uint64_t digest = 1469598103934665603ULL;
+      uint64_t sampleRawSum = 0;
+      uint64_t sampleDataSum = 0;
+
+      for (const auto& digi : collection) {
+        digest ^= digi.id().rawId();
+        digest *= 1099511628211ULL;
+        for (int i = 0; i < digi.size(); ++i) {
+          const uint32_t raw = digi.sample(i).raw();
+          sampleRawSum += raw;
+          sampleDataSum += digi.sample(i).data();
+          digest ^= raw;
+          digest *= 1099511628211ULL;
+        }
+      }
+
+      msg << " size=" << collection.size() << " sample_raw_sum=" << sampleRawSum
+          << " sample_data_sum=" << sampleDataSum << " digest=" << digest;
+      if (!collection.empty()) {
+        const auto& first = *collection.begin();
+        const auto& last = *std::prev(collection.end());
+        msg << " first_detid=" << first.id().rawId() << " last_detid=" << last.id().rawId();
+      }
+    }
+
+    msg << '\n';
+    logHGCalRawFake(msg);
+  }
+}  // namespace
 
 class HGCalRawToDigiFake : public edm::global::EDProducer<> {
 public:
@@ -34,7 +90,8 @@ HGCalRawToDigiFake::HGCalRawToDigiFake(const edm::ParameterSet& iConfig)
   produces<HGCalDigiCollection>("HEback");
 }
 
-void HGCalRawToDigiFake::produce(edm::StreamID, edm::Event& iEvent, const edm::EventSetup& iSetup) const {
+
+void HGCalRawToDigiFake::produce(edm::StreamID streamId, edm::Event& iEvent, const edm::EventSetup& iSetup) const {
   edm::Handle<HGCalDigiCollection> h_ee;
   edm::Handle<HGCalDigiCollection> h_fh;
   edm::Handle<HGCalDigiCollection> h_bh;
@@ -42,6 +99,9 @@ void HGCalRawToDigiFake::produce(edm::StreamID, edm::Event& iEvent, const edm::E
   iEvent.getByToken(tok_ee_, h_ee);
   iEvent.getByToken(tok_fh_, h_fh);
   iEvent.getByToken(tok_bh_, h_bh);
+  logDigiSummary(iEvent.id(), streamId, "input", "EE", h_ee);
+  logDigiSummary(iEvent.id(), streamId, "input", "HEfront", h_fh);
+  logDigiSummary(iEvent.id(), streamId, "input", "HEback", h_bh);
 
   auto out_ee = std::make_unique<HGCalDigiCollection>();
   if (h_ee.isValid()) {

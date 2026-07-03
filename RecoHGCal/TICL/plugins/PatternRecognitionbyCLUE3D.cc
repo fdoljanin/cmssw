@@ -169,6 +169,8 @@ void PatternRecognitionbyCLUE3D<TILES>::makeTracksters(
     const typename PatternRecognitionAlgoBaseT<TILES>::Inputs &input,
     std::vector<Trackster> &result,
     std::unordered_map<int, std::vector<int>> &seedToTracksterAssociation) {
+  std::cout << "CLUE3D Make tracksters for event " << input.ev.eventAuxiliary().event() << std::endl;
+
   // Protect from events with no seeding regions
   if (input.regions.empty())
     return;

@@ -4,6 +4,7 @@
 #include "TrackstersPCA.h"
 
 #include <iostream>
+#include <cmath>
 #include <set>
 
 #include <Eigen/Core>
@@ -117,15 +118,28 @@ void ticl::assignPCAtoTracksters(std::vector<Trackster> &tracksters,
           filtered_idx.push_back(filtered_vert);
 
           const auto &maxE_LC = layerClusters[trackster.vertices(filtered_vert)];
-          fillPoint(maxE_LC, maxE_LC.energy() * (1.f / trackster.vertex_multiplicity(filtered_vert)));
+          const float filtered_weight = maxE_LC.energy() * (1.f / trackster.vertex_multiplicity(filtered_vert));
+          fillPoint(maxE_LC, filtered_weight);
           for (size_t j = 0; j < 3; ++j)
             filtered_barycenter[j] += point[j];
-          filtered_energy += maxE_LC.energy();
+          filtered_energy += filtered_weight;
         }
       }
-      inv_filtered_energy = 1. / filtered_energy;
-      filtered_barycenter *= inv_filtered_energy;
+      if (filtered_energy > 0.f && std::isfinite(filtered_energy)) {
+        inv_filtered_energy = 1.f / filtered_energy;
+        filtered_barycenter *= inv_filtered_energy;
+      } else {
+        filtered_idx.clear();
+        filtered_barycenter = barycenter;
+        inv_filtered_energy = inv_raw_energy;
+      }
+      if (filtered_barycenter.allFinite()) {
+        trackster.setBarycenter(ticl::Trackster::Vector(filtered_barycenter));
+        trackster.calculateRawPt();
+        trackster.calculateRawEmPt();
+      }
     }
+
     LogDebug("TrackstersPCA_Eigen") << "min, max " << minLayer << "  " << maxLayer << std::endl;
 
     std::pair<float, float> timeTrackster;
